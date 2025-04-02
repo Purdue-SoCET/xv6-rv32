@@ -32,7 +32,7 @@ OBJS = \
 
 # riscv32-unknown-elf- or riscv32-linux-gnu-
 # perhaps in /opt/riscv/bin
-TOOLPREFIX = riscv32-unknown-elf-
+TOOLPREFIX = riscv64-unknown-elf-
 
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
@@ -54,9 +54,14 @@ LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 
-CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb
+RISCV_ARCH ?= rv32imac_zicsr_zifencei
+RISCV_ABI ?= ilp32
+
+CFLAGS = -march=$(RISCV_ARCH) -mabi=$(RISCV_ABI)
+CFLAGS += -Wall -Werror -O2 -fno-omit-frame-pointer -ggdb -g
 CFLAGS += -MD
 CFLAGS += -mcmodel=medany
+CFLAGS += -static -ffunction-sections -fdata-sections
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
@@ -70,6 +75,15 @@ CFLAGS += -fno-pie -nopie
 endif
 
 LDFLAGS = -z max-page-size=4096
+LDFLAGS += -march=$(RISCV_ARCH) -mabi=$(RISCV_ABI) -m elf32lriscv --no-warn-rwx-segments
+
+# Rule to compile .c into .o
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+# Rule to compile .S into .o
+%.o: %.S
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
@@ -160,6 +174,10 @@ QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-devic
 qemu: $K/kernel fs.img
 	$(QEMU) $(QEMUOPTS)
 
+run:
+	-qemu-system-riscv32 -machine virt -bios none -kernel kernel/kernel -m 1024M -smp 3  -serial mon:stdio -display none -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+# -qemu-system-riscv32 -M virt -bios fw_dynamic.elf -serial mon:stdio -display none -kernel femtokernel.img -smp 1
+
 .gdbinit: .gdbinit.tmpl-riscv
 	sed "s/:1234/:$(GDBPORT)/" < $^ > $@
 
@@ -208,5 +226,9 @@ tar:
 	mkdir -p /tmp/xv6
 	cp dist/* dist/.gdbinit.tmpl /tmp/xv6
 	(cd /tmp; tar cf - xv6) | gzip >xv6-rev10.tar.gz  # the next one will be 10 (9/17)
+
+# Prints out all running qemu processes, use kill [first number] to get rid of them
+show_qemu:
+	ps -ef | grep qemu-system
 
 .PHONY: dist-test dist
