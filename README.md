@@ -1,3 +1,5 @@
+using this to demonstrate s-mode hardware
+
 # xv6-rv32
 This is a port of MIT's xv6 OS [1] to 32 bit RISC V (rv32ia).
 This currently runs in qemu-system-riscv32 (tested with qemu-5.0.0) using virtio drivers.
